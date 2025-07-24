@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT History Visualizer</title>
+    <style>
+        /* General Body and Font Styles */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Main Panel for Uploading */
+        #upload-panel {
+            background-color: #1e1e1e;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid #333;
+            z-index: 10;
+            position: relative;
+        }
+
+        #upload-panel h2 {
+            margin-top: 0;
+            color: #ffffff;
+        }
+        
+        /* File Input Styling */
+        #file-input-label {
+            display: block;
+            padding: 12px 20px;
+            background-color: #333;
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 20px 0;
+        }
+        #file-input-label:hover {
+            background-color: #444;
+        }
+        #file-input {
+            display: none;
+        }
+        #file-name {
+            color: #888;
+            font-style: italic;
+            height: 20px;
+            display: block;
+        }
+
+        /* Instructions Styling */
+        details {
+            margin-top: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 5px 15px;
+            text-align: left;
+        }
+        summary {
+            cursor: pointer;
+            font-weight: bold;
+            outline: none; /* Removes the focus ring */
+            padding: 10px 0;
+        }
+        details ol {
+            padding-left: 20px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+        details[open] {
+            padding-bottom: 10px;
+        }
+
+        /* Generate Button Styling */
+        #generate-btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #007bff, #00d4ff);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+        #generate-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Loading Overlay Screen */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(18, 18, 18, 0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid #444;
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Status, Quote, and Note Text Styling */
+        #main-status {
+            margin-top: 30px;
+            font-size: 18px;
+            color: #ccc;
+        }
+        #quote-status {
+            margin-top: 15px;
+            font-size: 16px;
+            font-style: italic;
+            color: #999;
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+            height: 40px;
+            /* Animation is now controlled by JS and transitions */
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #quote-status.visible {
+            opacity: 1;
+        }
+        #loading-note {
+            position: absolute;
+            bottom: 30px;
+            font-size: 14px;
+            color: #777;
+        }
+        
+        /* Graph Container */
+        #graph-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="upload-panel">
+        <h2>ChatGPT History Visualizer</h2>
+        <p>Upload your chat history to generate a 3D web of your conversations.</p>
+        
+        <label for="file-input" id="file-input-label">Select conversations.json</label>
+        <input type="file" id="file-input" accept=".json">
+        <span id="file-name">No file selected</span>
+
+        <button id="generate-btn" disabled>Generate Visualization</button>
+
+        <details>
+            <summary>How do I get my history file?</summary>
+            <ol>
+                <li>Go to the ChatGPT website.</li>
+                <li>Click your name in the bottom-left corner.</li>
+                <li>Select <strong>Settings</strong>, then go to the <strong>Data controls</strong> tab.</li>
+                <li>Click the <strong>Export</strong> button.</li>
+                <li>You'll get an email with a download link.</li>
+                <li>Download and unzip the file, then look for <strong>conversations.json</strong>.</li>
+            </ol>
+        </details>
+    </div>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p id="main-status"></p>
+        <p id="quote-status"></p>
+        <p id="loading-note"></p>
+    </div>
+
+    <div id="graph-container"></div>
+
+    <script src="//unpkg.com/3d-force-graph"></script>
+    <script type="module">
+        import { pipeline, cos_sim } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+
+        // --- DOM Elements ---
+        const uploadPanel = document.getElementById('upload-panel');
+        const fileInput = document.getElementById('file-input');
+        const fileNameEl = document.getElementById('file-name');
+        const generateBtn = document.getElementById('generate-btn');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const mainStatusEl = document.getElementById('main-status');
+        const quoteStatusEl = document.getElementById('quote-status');
+        const loadingNoteEl = document.getElementById('loading-note');
+        const graphContainer = document.getElementById('graph-container');
+        
+        // --- State and Config ---
+        let fileContent = null;
+        let quoteTimeout;
+        const SIMILARITY_THRESHOLD = 0.65;
+        const BATCH_SIZE = 10;
+        const AI_QUOTES = [
+            "Fun Fact: The term 'Artificial Intelligence' was coined in 1956.",
+            "The best AI is the one you don't notice.",
+            "Fun Fact: An AI has co-authored a novel that passed the first round of a literary prize.",
+            "Data is not information, information is not knowledge.",
+            "Fun Fact: The world's first robot was created in the 1950s and was named 'Unimate'.",
+            "Turning your data into a constellation of ideas...",
+            "AI is the new electricity.",
+        ];
+
+        // --- Pre-load Model ---
+        const modelPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+        
+        // --- Helper Function ---
+        function yieldToMain() {
+            return new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        // --- Event Listeners ---
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            fileNameEl.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                fileContent = e.target.result;
+                generateBtn.disabled = false;
+            };
+            reader.readAsText(file);
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            if (!fileContent) return;
+
+            uploadPanel.style.display = 'none';
+            loadingOverlay.style.display = 'flex';
+            loadingNoteEl.textContent = 'Please be patient, this may take a few minutes depending on your history\'s size.';
+            
+            startQuoteAnimation();
+
+            try {
+                const conversations = JSON.parse(fileContent);
+                const conversationTexts = parseConversations(conversations);
+                if (conversationTexts.length === 0) throw new Error('No valid conversations found.');
+                
+                mainStatusEl.textContent = `Warming up the AI model...`;
+                const extractor = await modelPromise;
+
+                const allEmbeddings = [];
+                const numBatches = Math.ceil(conversationTexts.length / BATCH_SIZE);
+                
+                for (let i = 0; i < numBatches; i++) {
+                    mainStatusEl.textContent = `Generating embeddings... (Batch ${i + 1} of ${numBatches})`;
+                    const batchTexts = conversationTexts.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+                    const batchEmbeddings = await extractor(batchTexts, { pooling: 'mean', normalize: true });
+                    allEmbeddings.push(...batchEmbeddings.tolist());
+                    await yieldToMain();
+                }
+
+                mainStatusEl.textContent = "Building graph...";
+                await yieldToMain();
+                
+                const graphData = buildGraph(allEmbeddings, conversationTexts);
+                visualizeGraph(graphData);
+
+            } catch (error) {
+                console.error("An error occurred:", error);
+                alert("Failed to process the file. Error: " + error.message);
+                uploadPanel.style.display = 'block';
+            } finally {
+                stopQuoteAnimation();
+                loadingOverlay.style.display = 'none';
+            }
+        });
+
+        // --- Core Functions ---
+        function parseConversations(conversations) {
+            const texts = [];
+            for (const conv of conversations) {
+                let fullText = '';
+                if (conv.mapping) {
+                    for (const message_data of Object.values(conv.mapping)) {
+                        const message = message_data.message;
+                        if (message?.content?.parts?.[0]) {
+                            fullText += message.content.parts[0] + '\n';
+                        }
+                    }
+                }
+                if (fullText.trim()) texts.push(fullText.trim());
+            }
+            return texts;
+        }
+
+        function buildGraph(embeddings, texts) {
+            const nodes = [];
+            const links = [];
+            for (let i = 0; i < embeddings.length; i++) {
+                nodes.push({ id: i, text: texts[i], title: `Conversation ${i+1}` });
+                for (let j = i + 1; j < embeddings.length; j++) {
+                    const similarity = cos_sim(embeddings[i], embeddings[j]);
+                    if (similarity > SIMILARITY_THRESHOLD) {
+                        links.push({ source: i, target: j, value: similarity });
+                    }
+                }
+            }
+            return { nodes, links };
+        }
+
+        function visualizeGraph(data) {
+            graphContainer.style.pointerEvents = 'auto'; 
+            ForceGraph3D()(graphContainer)
+                .graphData(data)
+                .nodeLabel('title')
+                .nodeAutoColorBy('id')
+                .linkWidth(link => (link.value - SIMILARITY_THRESHOLD) * 4)
+                .linkColor(() => 'rgba(255,255,255,0.2)')
+                .linkDirectionalParticles(1)
+                .linkDirectionalParticleWidth(1.5)
+                .d3Force('charge', -80)
+                .d3Force('link').distance(25)
+                .onNodeClick(node => alert(`Conversation ${node.id + 1}:\n\n${node.text}`));
+        }
+        
+        // --- FINAL, ROBUST ANIMATION LOGIC ---
+        function startQuoteAnimation() {
+            quoteStatusEl.style.display = 'block';
+            let lastQuoteIndex = -1;
+
+            function cycle() {
+                // 1. Pick a new, non-repeating random quote
+                let randomIndex;
+                do {
+                    randomIndex = Math.floor(Math.random() * AI_QUOTES.length);
+                } while (AI_QUOTES.length > 1 && randomIndex === lastQuoteIndex);
+                lastQuoteIndex = randomIndex;
+                
+                // 2. Update text content and fade in
+                quoteStatusEl.textContent = AI_QUOTES[randomIndex];
+                quoteStatusEl.classList.add('visible');
+
+                // 3. Schedule the fade-out after 6 seconds
+                quoteTimeout = setTimeout(() => {
+                    quoteStatusEl.classList.remove('visible');
+                    
+                    // 4. Schedule the next cycle after the fade-out completes (500ms transition)
+                    quoteTimeout = setTimeout(cycle, 500);
+                }, 6000); // Quote is visible for 6 seconds
+            }
+            
+            cycle(); // Start the first animation cycle
+        }
+
+        function stopQuoteAnimation() {
+            clearTimeout(quoteTimeout);
+            quoteStatusEl.style.display = 'none';
+            quoteStatusEl.classList.remove('visible');
+        }
+
+    </script>
+</body>
+</html>
