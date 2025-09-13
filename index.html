@@ -346,7 +346,7 @@
                 .linkDirectionalParticleWidth(1.5)
                 .d3Force('charge', -80)
                 .d3Force('link').distance(25)
-                .onNodeClick(node => alert(`Conversation ${node.id + 1}:\n\n${node.text}`));
+                .onNodeRightClick(node => alert(`Conversation ${node.id + 1}:\n\n${node.text}`));
         }
         
         // --- FINAL, ROBUST ANIMATION LOGIC ---
